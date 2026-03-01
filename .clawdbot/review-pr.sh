@@ -6,12 +6,13 @@ set -euo pipefail
 
 REPO_DIR="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 PR_NUM="${1:?PR number required}"
+REPO_SLUG=$(cd "${REPO_DIR}" && gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)
 
 log() { echo "[review] $*"; }
 
-log "Fetching diff for PR #${PR_NUM}..."
-DIFF=$(gh pr diff "${PR_NUM}" --repo "${REPO_DIR}" 2>/dev/null || true)
-PR_TITLE=$(gh pr view "${PR_NUM}" --repo "${REPO_DIR}" --json title --jq '.title')
+log "Fetching diff for PR #${PR_NUM} (${REPO_SLUG})..."
+DIFF=$(gh pr diff "${PR_NUM}" --repo "${REPO_SLUG}" 2>/dev/null || true)
+PR_TITLE=$(gh pr view "${PR_NUM}" --repo "${REPO_SLUG}" --json title --jq '.title')
 
 if [[ -z "${DIFF}" ]]; then
   log "No diff found for PR #${PR_NUM}. Skipping review."
@@ -25,9 +26,9 @@ ${DIFF:0:8000}"
 # --- Codex Reviewer ---
 if command -v codex &>/dev/null; then
   log "Running Codex review..."
-  CODEX_REVIEW=$(codex --model gpt-4.1 -c "model_reasoning_effort=high" \
-    --dangerously-bypass-approvals-and-sandbox "${REVIEW_PROMPT}" 2>/dev/null || echo "Codex review failed")
-  gh pr comment "${PR_NUM}" --repo "${REPO_DIR}" \
+  CODEX_REVIEW=$(codex exec --dangerously-bypass-approvals-and-sandbox \
+    "${REVIEW_PROMPT}" 2>/dev/null || echo "Codex review failed")
+  gh pr comment "${PR_NUM}" --repo "${REPO_SLUG}" \
     --body "## 🤖 Codex Review
 
 ${CODEX_REVIEW}" 2>/dev/null || log "Failed to post Codex review comment"
@@ -39,7 +40,7 @@ if command -v claude &>/dev/null; then
   log "Running Claude Code review..."
   CLAUDE_REVIEW=$(claude --model claude-opus-4-5 --dangerously-skip-permissions \
     -p "${REVIEW_PROMPT}" 2>/dev/null || echo "Claude review failed")
-  gh pr comment "${PR_NUM}" --repo "${REPO_DIR}" \
+  gh pr comment "${PR_NUM}" --repo "${REPO_SLUG}" \
     --body "## 🤖 Claude Code Review
 
 ${CLAUDE_REVIEW}" 2>/dev/null || log "Failed to post Claude review comment"
@@ -50,7 +51,7 @@ fi
 if command -v gemini &>/dev/null; then
   log "Running Gemini review..."
   GEMINI_REVIEW=$(echo "${REVIEW_PROMPT}" | gemini 2>/dev/null || echo "Gemini review failed")
-  gh pr comment "${PR_NUM}" --repo "${REPO_DIR}" \
+  gh pr comment "${PR_NUM}" --repo "${REPO_SLUG}" \
     --body "## 🤖 Gemini Review
 
 ${GEMINI_REVIEW}" 2>/dev/null || log "Failed to post Gemini review comment"

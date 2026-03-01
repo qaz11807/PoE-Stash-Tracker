@@ -54,9 +54,24 @@ while IFS= read -r TASK; do
 
   # --- 2. Check for PR ---
   PR_NUM=""
-  PR_NUM=$(gh pr list --repo "${REPO_DIR}" --head "${BRANCH}" --json number --jq '.[0].number // empty' 2>/dev/null || true)
+  REPO_SLUG=$(cd "${REPO_DIR}" && gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+  PR_NUM=$(gh pr list --repo "${REPO_SLUG}" --head "${BRANCH}" --json number --jq '.[0].number // empty' 2>/dev/null || true)
+  REVIEWED=$(echo "${TASK}" | jq -r '.reviewed // "false"')
   if [[ -n "${PR_NUM}" ]]; then
-    log "    PR: #${PR_NUM} found"
+    log "    PR: #${PR_NUM} found (reviewed=${REVIEWED})"
+    # Auto-trigger code review if PR just appeared and not yet reviewed
+    if [[ "${REVIEWED}" == "false" ]]; then
+      log "    => Triggering auto code review for PR #${PR_NUM}..."
+      bash "${CLAWDBOT_DIR}/review-pr.sh" "${PR_NUM}" "${REPO_DIR}" >> "${CLAWDBOT_DIR}/monitor.log" 2>&1 &
+      TASK=$(echo "${TASK}" | jq '.reviewed = "true"')
+      # Notify Discord that review started
+      if [[ -n "${CLAWDBOT_DISCORD_CHANNEL:-}" ]]; then
+        openclaw message send \
+          --channel discord \
+          --target "channel:${CLAWDBOT_DISCORD_CHANNEL}" \
+          --message "🔍 **PR #${PR_NUM} 已建立！** 正在自動執行代碼審查，結果將 comment 至 PR。" 2>/dev/null || true
+      fi
+    fi
   else
     log "    PR: none yet"
   fi
@@ -64,7 +79,7 @@ while IFS= read -r TASK; do
   # --- 3. Check CI ---
   CI_STATUS=""
   if [[ -n "${PR_NUM}" ]]; then
-    CI_STATUS=$(gh pr checks "${PR_NUM}" --repo "${REPO_DIR}" 2>/dev/null \
+    CI_STATUS=$(gh pr checks "${PR_NUM}" --repo "${REPO_SLUG}" 2>/dev/null \
       | awk '{print $2}' | sort | uniq \
       | (grep -c "fail" || true) | xargs -I{} bash -c 'if [ {} -gt 0 ]; then echo fail; else echo pass; fi')
     log "    CI: ${CI_STATUS:-unknown}"
