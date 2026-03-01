@@ -34,13 +34,42 @@ fi
 # 2. Kill existing tmux session if any
 tmux kill-session -t "${TMUX_SESSION}" 2>/dev/null || true
 
+# 3. Build PR body template and full prompt
+PR_BODY="## 需求來源
+
+由 AI Agent 自動執行任務：${TASK_ID}
+
+## 功能/問題描述
+
+${PROMPT:0:300}
+
+## 作法
+
+由 Codex/Claude agent 自動實作，詳見 commit diff。
+
+## Additional Note
+
+- Agent: ${AGENT} (${MODEL})
+- Branch: ${BRANCH}
+- Task ID: ${TASK_ID}"
+
+# Escape for shell injection into prompt
+PR_BODY_ESCAPED=$(echo "${PR_BODY}" | sed "s/\"/'/g")
+
+FULL_PROMPT="${PROMPT}
+
+## PR 建立規範
+當你執行 gh pr create 時，請使用以下指令帶入 PR 說明：
+gh pr create --title \"<適當的標題>\" --body \"${PR_BODY_ESCAPED}\"
+不要使用 --fill，請務必使用 --body 帶入上述說明。"
+
 # 3. Build agent command
 case "${AGENT}" in
   codex)
-    AGENT_CMD="codex exec -c \"model=gpt-5.3-codex\" \"${PROMPT}\""
+    AGENT_CMD="codex exec --dangerously-bypass-approvals-and-sandbox \"${FULL_PROMPT}\""
     ;;
   claude)
-    AGENT_CMD="claude --model ${MODEL} --dangerously-skip-permissions -p \"${PROMPT}\""
+    AGENT_CMD="claude --model ${MODEL} --dangerously-skip-permissions -p \"${FULL_PROMPT}\""
     ;;
   *)
     echo "ERROR: Unknown agent '${AGENT}'. Use codex or claude." >&2
@@ -78,7 +107,8 @@ TASK_JSON=$(cat <<TASK_EOF
   "startedAt": ${STARTED_AT},
   "status": "running",
   "attempts": 1,
-  "notifyOnComplete": true
+  "notifyOnComplete": true,
+  "reviewed": "false"
 }
 TASK_EOF
 )
