@@ -81,8 +81,10 @@ while IFS= read -r TASK; do
 
     # Notify via Discord (channel set via CLAWDBOT_DISCORD_CHANNEL env var)
     if [[ -n "${CLAWDBOT_DISCORD_CHANNEL:-}" ]]; then
-      openclaw send discord "channel:${CLAWDBOT_DISCORD_CHANNEL}" \
-        "✅ **Task \`${ID}\` done!** PR #${PR_NUM} ready to merge.
+      openclaw message send \
+        --channel discord \
+        --target "channel:${CLAWDBOT_DISCORD_CHANNEL}" \
+        --message "✅ **Task \`${ID}\` done!** PR #${PR_NUM} ready to merge.
 > ${DESC:0:100}" 2>/dev/null || true
     fi
 
