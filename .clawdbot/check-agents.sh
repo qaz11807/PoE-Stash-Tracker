@@ -5,6 +5,10 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLAWDBOT_DIR="${REPO_DIR}/.clawdbot"
+
+# Load local env (not committed to git)
+[[ -f "${CLAWDBOT_DIR}/.env" ]] && source "${CLAWDBOT_DIR}/.env"
+CLAWDBOT_DIR="${REPO_DIR}/.clawdbot"
 TASKS_FILE="${CLAWDBOT_DIR}/active-tasks.json"
 MAX_ATTEMPTS=3
 
@@ -75,10 +79,12 @@ while IFS= read -r TASK; do
     NOTE="PR #${PR_NUM} created, CI passed. Ready to merge."
     log "    => DONE — ${NOTE}"
 
-    # Notify via Discord
-    openclaw send discord "channel:1476575892875644973" \
-      "✅ **Task \`${ID}\` done!** PR #${PR_NUM} ready to merge.
+    # Notify via Discord (channel set via CLAWDBOT_DISCORD_CHANNEL env var)
+    if [[ -n "${CLAWDBOT_DISCORD_CHANNEL:-}" ]]; then
+      openclaw send discord "channel:${CLAWDBOT_DISCORD_CHANNEL}" \
+        "✅ **Task \`${ID}\` done!** PR #${PR_NUM} ready to merge.
 > ${DESC:0:100}" 2>/dev/null || true
+    fi
 
   elif [[ "${TMUX_ALIVE}" == "false" && -z "${PR_NUM}" ]]; then
     # Agent died without creating a PR — respawn if attempts < max
