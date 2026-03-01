@@ -75,10 +75,10 @@ while IFS= read -r TASK; do
     NOTE="PR #${PR_NUM} created, CI passed. Ready to merge."
     log "    => DONE — ${NOTE}"
 
-    # Notify via OpenClaw (Telegram/webchat)
-    if command -v openclaw &>/dev/null; then
-      openclaw message "✅ Task *${ID}* done! PR #${PR_NUM} — ${DESC:0:80}" 2>/dev/null || true
-    fi
+    # Notify via Discord
+    openclaw send discord "channel:1476575892875644973" \
+      "✅ **Task \`${ID}\` done!** PR #${PR_NUM} ready to merge.
+> ${DESC:0:100}" 2>/dev/null || true
 
   elif [[ "${TMUX_ALIVE}" == "false" && -z "${PR_NUM}" ]]; then
     # Agent died without creating a PR — respawn if attempts < max
