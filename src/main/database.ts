@@ -227,3 +227,27 @@ export function insertStashItemsBatch(items: NewStashItem[]): void {
   });
   insertMany(items);
 }
+
+export function saveStashSnapshot(leagueId: number, rawJson: string, items: NewStashItem[]): { snapshotId: number; itemCount: number } {
+  const database = initDatabase();
+  let snapshotId: number = 0;
+  let itemCount = 0;
+
+  const transaction = database.transaction(() => {
+    snapshotId = insertSnapshot(leagueId, rawJson);
+
+    if (items.length > 0) {
+      const updated = items.map(item => ({
+        ...item,
+        snapshot_id: snapshotId,
+        league_id: leagueId
+      }));
+      insertStashItemsBatch(updated);
+      itemCount = updated.length;
+    }
+  });
+
+  transaction();
+
+  return { snapshotId, itemCount };
+}

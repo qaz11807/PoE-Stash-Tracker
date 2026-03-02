@@ -11,6 +11,7 @@ import {
   insertSnapshot,
   insertStashItem,
   insertStashItemsBatch,
+  saveStashSnapshot,
   type NewStashItem
 } from './database';
 
@@ -107,6 +108,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('db:getStashItems', (_event, snapshotId: number) => getStashItems(snapshotId));
   ipcMain.handle('db:insertStashItem', (_event, data: NewStashItem) => insertStashItem(data));
   ipcMain.handle('db:insertStashItemsBatch', (_event, items: NewStashItem[]) => insertStashItemsBatch(items));
+  ipcMain.handle('db:saveStashSnapshot', (_event, leagueId: number, rawJson: string, items: NewStashItem[]) =>
+    saveStashSnapshot(leagueId, rawJson, items));
 }
 
 const gotLock = app.requestSingleInstanceLock();

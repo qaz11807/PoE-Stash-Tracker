@@ -25,7 +25,9 @@ const electronAPI = {
       ipcRenderer.invoke('db:insertSnapshot', leagueId, rawJson),
     getStashItems: (snapshotId: number): Promise<unknown[]> => ipcRenderer.invoke('db:getStashItems', snapshotId),
     insertStashItem: (data: NewStashItem): Promise<number> => ipcRenderer.invoke('db:insertStashItem', data),
-    insertStashItemsBatch: (items: NewStashItem[]): Promise<void> => ipcRenderer.invoke('db:insertStashItemsBatch', items)
+    insertStashItemsBatch: (items: NewStashItem[]): Promise<void> => ipcRenderer.invoke('db:insertStashItemsBatch', items),
+    saveStashSnapshot: (leagueId: number, rawJson: string, items: NewStashItem[]): Promise<{ snapshotId: number; itemCount: number }> =>
+      ipcRenderer.invoke('db:saveStashSnapshot', leagueId, rawJson, items)
   }
 };
 
@@ -35,10 +37,14 @@ const poeApi = {
   getStashTabs: (leagueId: string) => ipcRenderer.invoke('poe:getStashTabs', leagueId),
   fetchStash: (leagueId: string, stashId: string) => ipcRenderer.invoke('poe:fetchStash', leagueId, stashId),
   onOAuthError: (callback: (message: string) => void) => {
-    ipcRenderer.on('poe:oauth-callback-error', (_event, msg: string) => callback(msg));
+    const handler = (_event: unknown, msg: string) => callback(msg);
+    ipcRenderer.on('poe:oauth-callback-error', handler);
+    return () => ipcRenderer.removeListener('poe:oauth-callback-error', handler);
   },
   onOAuthSuccess: (callback: () => void) => {
-    ipcRenderer.on('poe:oauth-success', () => callback());
+    const handler = () => callback();
+    ipcRenderer.on('poe:oauth-success', handler);
+    return () => ipcRenderer.removeListener('poe:oauth-success', handler);
   }
 };
 

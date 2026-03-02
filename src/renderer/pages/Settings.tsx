@@ -60,17 +60,11 @@ export default function Settings() {
       // Get or create league in database
       const leagueDbId = await window.electronAPI.db.insertLeague(selectedLeague);
 
-      // Create snapshot
-      const snapshotId = await window.electronAPI.db.insertSnapshot(
-        leagueDbId,
-        JSON.stringify({ tabId: tab.id, tabName: tab.name, items })
-      );
-
-      // Save items to database
+      // Prepare items for database
       const dbItems = items.map((item) => ({
         item_id: item.id,
-        league_id: leagueDbId,
-        snapshot_id: snapshotId,
+        league_id: null, // Will be set by saveStashSnapshot
+        snapshot_id: null, // Will be set by saveStashSnapshot
         name: item.name || null,
         type_line: item.typeLine || null,
         stack_size: item.stackSize || null,
@@ -80,9 +74,14 @@ export default function Settings() {
         tab_type: tab.type || null
       }));
 
-      await window.electronAPI.db.insertStashItemsBatch(dbItems);
+      // Save snapshot and items atomically
+      const result = await window.electronAPI.db.saveStashSnapshot(
+        leagueDbId,
+        JSON.stringify({ tabId: tab.id, tabName: tab.name, items }),
+        dbItems
+      );
 
-      alert(`成功擷取 ${tab.name} 的快照！共 ${items.length} 個物品`);
+      alert(`成功擷取 ${tab.name} 的快照！共 ${result.itemCount} 個物品`);
     } catch (error) {
       alert(`擷取快照失敗: ${error instanceof Error ? error.message : '未知錯誤'}`);
     } finally {
