@@ -4,6 +4,7 @@ import {
   createTables,
   getLeagues,
   getSnapshots,
+  getSnapshotDetail,
   getStashItems,
   insertLeague,
   insertSnapshot,
@@ -60,6 +61,10 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('db:getSnapshots', (_event, leagueId: number) => {
     return getSnapshots(leagueId);
+  });
+
+  ipcMain.handle('db:getSnapshotDetail', (_event, id: number) => {
+    return getSnapshotDetail(id);
   });
 
   ipcMain.handle('db:insertSnapshot', (_event, leagueId: number, rawJson: string) => {

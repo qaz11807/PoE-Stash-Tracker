@@ -58,8 +58,14 @@ function runMigrations(database: BetterSqlite3Database): void {
   const row = database.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number | null };
   const currentVersion = row?.v ?? 0;
 
-  if (currentVersion < 1) {
-    database.prepare('INSERT INTO schema_version (version) VALUES (?)').run(1);
+  if (currentVersion < SCHEMA_VERSION) {
+    database.transaction(() => {
+      // v1: add stash tab metadata columns (safe to re-run via try/catch)
+      try { database.exec(`ALTER TABLE stash_items ADD COLUMN stash_tab_id TEXT`); } catch { /* already exists */ }
+      try { database.exec(`ALTER TABLE stash_items ADD COLUMN tab_name TEXT`); } catch { /* already exists */ }
+      try { database.exec(`ALTER TABLE stash_items ADD COLUMN tab_type TEXT`); } catch { /* already exists */ }
+      database.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
+    })();
   }
 }
 
@@ -126,18 +132,28 @@ export function getLeagues(): League[] {
 }
 
 export function insertLeague(name: string): number {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length > 128) throw new Error('Invalid league name');
   const database = initDatabase();
   const statement = database.prepare('INSERT INTO leagues (name) VALUES (?)');
-  const result = statement.run(name);
+  const result = statement.run(trimmed);
   return Number(result.lastInsertRowid);
 }
 
-export function getSnapshots(leagueId: number): Snapshot[] {
+export function getSnapshots(leagueId: number): Omit<Snapshot, 'raw_json'>[] {
   const database = initDatabase();
   const statement = database.prepare(
-    'SELECT id, league_id, captured_at, raw_json FROM snapshots WHERE league_id = ? ORDER BY captured_at DESC, id DESC'
+    'SELECT id, league_id, captured_at FROM snapshots WHERE league_id = ? ORDER BY captured_at DESC, id DESC'
   );
-  return statement.all(leagueId) as Snapshot[];
+  return statement.all(leagueId) as Omit<Snapshot, 'raw_json'>[];
+}
+
+export function getSnapshotDetail(id: number): Snapshot | null {
+  const database = initDatabase();
+  const statement = database.prepare(
+    'SELECT id, league_id, captured_at, raw_json FROM snapshots WHERE id = ?'
+  );
+  return (statement.get(id) as Snapshot | undefined) ?? null;
 }
 
 export function insertSnapshot(leagueId: number, rawJson: string): number {

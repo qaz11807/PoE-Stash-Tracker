@@ -20,6 +20,7 @@ const electronAPI = {
     getLeagues: (): Promise<unknown[]> => ipcRenderer.invoke('db:getLeagues'),
     insertLeague: (name: string): Promise<number> => ipcRenderer.invoke('db:insertLeague', name),
     getSnapshots: (leagueId: number): Promise<unknown[]> => ipcRenderer.invoke('db:getSnapshots', leagueId),
+    getSnapshotDetail: (id: number): Promise<unknown | null> => ipcRenderer.invoke('db:getSnapshotDetail', id),
     insertSnapshot: (leagueId: number, rawJson: string): Promise<number> =>
       ipcRenderer.invoke('db:insertSnapshot', leagueId, rawJson),
     getStashItems: (snapshotId: number): Promise<unknown[]> => ipcRenderer.invoke('db:getStashItems', snapshotId),
