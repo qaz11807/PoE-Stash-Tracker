@@ -35,8 +35,32 @@ while IFS= read -r TASK; do
   WORKTREE=$(echo "${TASK}"  | jq -r '.worktree')
   DESC=$(echo "${TASK}"      | jq -r '.description')
 
-  if [[ "${STATUS}" == "done" || "${STATUS}" == "failed" ]]; then
-    log "  [${ID}] Already ${STATUS}, skipping."
+  if [[ "${STATUS}" == "failed" ]]; then
+    log "  [${ID}] Already failed, skipping."
+    UPDATED_TASKS=$(echo "${UPDATED_TASKS}" | jq --argjson t "${TASK}" '. + [$t]')
+    continue
+  fi
+
+  # For done tasks: check if there's a new commit to re-review
+  if [[ "${STATUS}" == "done" ]]; then
+    BRANCH=$(echo "${TASK}" | jq -r '.branch')
+    REPO_SLUG=$(cd "${REPO_DIR}" && gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+    PR_NUM_CHECK=$(gh pr list --repo "${REPO_SLUG}" --head "${BRANCH}" --json number --jq '.[0].number // empty' 2>/dev/null || true)
+    if [[ -n "${PR_NUM_CHECK}" ]]; then
+      LOCK_FILE="${CLAWDBOT_DIR}/.review-lock-pr${PR_NUM_CHECK}"
+      CURRENT_SHA=$(gh pr view "${PR_NUM_CHECK}" --repo "${REPO_SLUG}" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
+      LAST_SHA=$(cat "${LOCK_FILE}" 2>/dev/null || true)
+      if [[ -n "${CURRENT_SHA}" && "${CURRENT_SHA}" != "${LAST_SHA}" ]]; then
+        log "  [${ID}] New commit detected on PR #${PR_NUM_CHECK} (${CURRENT_SHA:0:7}), triggering re-review..."
+        bash "${CLAWDBOT_DIR}/review-pr.sh" "${PR_NUM_CHECK}" "${REPO_DIR}" >> "${CLAWDBOT_DIR}/monitor.log" 2>&1 &
+        if [[ -n "${CLAWDBOT_DISCORD_CHANNEL:-}" ]]; then
+          openclaw message send \
+            --channel discord \
+            --target "channel:${CLAWDBOT_DISCORD_CHANNEL}" \
+            --message "🔄 **PR #${PR_NUM_CHECK} 有新 commit！** 正在重新執行代碼審查..." 2>/dev/null || true
+        fi
+      fi
+    fi
     UPDATED_TASKS=$(echo "${UPDATED_TASKS}" | jq --argjson t "${TASK}" '. + [$t]')
     continue
   fi

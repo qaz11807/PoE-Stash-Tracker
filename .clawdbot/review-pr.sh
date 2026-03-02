@@ -9,13 +9,19 @@ REPO_SLUG=$(cd "${REPO_DIR}" && gh repo view --json nameWithOwner --jq '.nameWit
 
 log() { echo "[review] $*"; }
 
-# Idempotency lock — prevent running review twice for the same PR
+# Idempotency — skip if this exact commit was already reviewed
+CURRENT_SHA=$(gh pr view "${PR_NUM}" --repo "${REPO_SLUG}" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
 LOCK_FILE="${REPO_DIR}/.clawdbot/.review-lock-pr${PR_NUM}"
-if [[ -f "${LOCK_FILE}" ]]; then
-  log "PR #${PR_NUM} already reviewed (lock file exists). Skipping."
+LAST_SHA=$(cat "${LOCK_FILE}" 2>/dev/null || true)
+
+if [[ -n "${LAST_SHA}" && "${LAST_SHA}" == "${CURRENT_SHA}" ]]; then
+  log "PR #${PR_NUM} already reviewed at commit ${CURRENT_SHA:0:7}. Skipping."
   exit 0
 fi
-touch "${LOCK_FILE}"
+
+# Save current SHA as reviewed
+echo "${CURRENT_SHA}" > "${LOCK_FILE}"
+log "Reviewing PR #${PR_NUM} at commit ${CURRENT_SHA:0:7}..."
 
 log "Fetching diff for PR #${PR_NUM} (${REPO_SLUG})..."
 DIFF=$(gh pr diff "${PR_NUM}" --repo "${REPO_SLUG}" 2>/dev/null || true)
