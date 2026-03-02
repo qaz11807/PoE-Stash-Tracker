@@ -9,6 +9,14 @@ REPO_SLUG=$(cd "${REPO_DIR}" && gh repo view --json nameWithOwner --jq '.nameWit
 
 log() { echo "[review] $*"; }
 
+# Idempotency lock — prevent running review twice for the same PR
+LOCK_FILE="${REPO_DIR}/.clawdbot/.review-lock-pr${PR_NUM}"
+if [[ -f "${LOCK_FILE}" ]]; then
+  log "PR #${PR_NUM} already reviewed (lock file exists). Skipping."
+  exit 0
+fi
+touch "${LOCK_FILE}"
+
 log "Fetching diff for PR #${PR_NUM} (${REPO_SLUG})..."
 DIFF=$(gh pr diff "${PR_NUM}" --repo "${REPO_SLUG}" 2>/dev/null || true)
 PR_TITLE=$(gh pr view "${PR_NUM}" --repo "${REPO_SLUG}" --json title --jq '.title')
