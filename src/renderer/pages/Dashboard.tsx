@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useDashboardData } from '../hooks/useDashboardData';
 
@@ -14,9 +14,11 @@ export default function Dashboard() {
   const itemsPerPage = 20;
 
   // Auto-select first league if none selected
-  if (leagues.length > 0 && selectedLeagueId === null) {
-    setSelectedLeagueId(leagues[0].id);
-  }
+  useEffect(() => {
+    if (leagues.length > 0 && selectedLeagueId === null) {
+      setSelectedLeagueId(leagues[0].id);
+    }
+  }, [leagues, selectedLeagueId]);
 
   // Calculate summary statistics
   const totalItems = items.length;
@@ -33,7 +35,7 @@ export default function Dashboard() {
       return name.toLowerCase().includes(searchTerm.toLowerCase());
     });
 
-    result.sort((a, b) => {
+    return [...result].sort((a, b) => {
       if (sortField === 'name') {
         const aName = a.name || a.type_line || '';
         const bName = b.name || b.type_line || '';
@@ -44,8 +46,6 @@ export default function Dashboard() {
         return sortOrder === 'asc' ? aSize - bSize : bSize - aSize;
       }
     });
-
-    return result;
   }, [items, searchTerm, sortField, sortOrder]);
 
   // Paginate items
@@ -63,7 +63,7 @@ export default function Dashboard() {
         day: 'numeric',
         hour: '2-digit',
       }),
-      count: 0, // We'll need to query item counts per snapshot in a real implementation
+      count: snapshot.itemCount ?? 0,
     }));
   }, [snapshots]);
 
@@ -174,9 +174,6 @@ export default function Dashboard() {
               />
             </AreaChart>
           </ResponsiveContainer>
-          <p className="mt-2 text-sm text-slate-400">
-            註: 目前顯示快照時間軸，物品數量統計功能待實作
-          </p>
         </article>
       )}
 

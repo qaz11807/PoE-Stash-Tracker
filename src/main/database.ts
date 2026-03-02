@@ -181,6 +181,12 @@ export function getStashItems(snapshotId: number): StashItem[] {
   return statement.all(snapshotId) as StashItem[];
 }
 
+export function getSnapshotItemCount(snapshotId: number): number {
+  const database = initDatabase();
+  const row = database.prepare('SELECT COUNT(*) as count FROM stash_items WHERE snapshot_id = ?').get(snapshotId) as { count: number };
+  return row.count;
+}
+
 export function insertStashItem(data: NewStashItem): number {
   const database = initDatabase();
   const statement = database.prepare(

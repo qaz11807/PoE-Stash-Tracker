@@ -10,6 +10,7 @@ type Snapshot = {
   id: number;
   league_id: number | null;
   captured_at: string;
+  itemCount?: number;
 };
 
 type StashItem = {
@@ -65,10 +66,16 @@ export function useDashboardData(leagueId: number | null) {
       try {
         // Load snapshots for the league
         const snapshotList = await window.electronAPI.db.getSnapshots(leagueId);
-        setSnapshots(snapshotList);
+
+        // Fetch item counts for each snapshot
+        const counts = await Promise.all(
+          snapshotList.map((s: any) => window.electronAPI.db.getSnapshotItemCount(s.id))
+        );
+        const snapshotsWithCounts = snapshotList.map((s: any, i: number) => ({ ...s, itemCount: counts[i] }));
+        setSnapshots(snapshotsWithCounts);
 
         // Get the latest snapshot
-        const latest = snapshotList.length > 0 ? snapshotList[0] : null;
+        const latest = snapshotsWithCounts.length > 0 ? snapshotsWithCounts[0] : null;
         setLatestSnapshot(latest);
 
         // Load items from the latest snapshot

@@ -7,6 +7,7 @@ import {
   getSnapshots,
   getSnapshotDetail,
   getStashItems,
+  getSnapshotItemCount,
   insertLeague,
   insertSnapshot,
   insertStashItem,
@@ -105,6 +106,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('db:getSnapshotDetail', (_event, id: number) => getSnapshotDetail(id));
   ipcMain.handle('db:insertSnapshot', (_event, leagueId: number, rawJson: string) => insertSnapshot(leagueId, rawJson));
   ipcMain.handle('db:getStashItems', (_event, snapshotId: number) => getStashItems(snapshotId));
+  ipcMain.handle('db:getSnapshotItemCount', (_event, snapshotId: number) => getSnapshotItemCount(snapshotId));
   ipcMain.handle('db:insertStashItem', (_event, data: NewStashItem) => insertStashItem(data));
   ipcMain.handle('db:insertStashItemsBatch', (_event, items: NewStashItem[]) => insertStashItemsBatch(items));
 }

@@ -24,6 +24,7 @@ const electronAPI = {
     insertSnapshot: (leagueId: number, rawJson: string): Promise<number> =>
       ipcRenderer.invoke('db:insertSnapshot', leagueId, rawJson),
     getStashItems: (snapshotId: number): Promise<unknown[]> => ipcRenderer.invoke('db:getStashItems', snapshotId),
+    getSnapshotItemCount: (snapshotId: number): Promise<number> => ipcRenderer.invoke('db:getSnapshotItemCount', snapshotId),
     insertStashItem: (data: NewStashItem): Promise<number> => ipcRenderer.invoke('db:insertStashItem', data),
     insertStashItemsBatch: (items: NewStashItem[]): Promise<void> => ipcRenderer.invoke('db:insertStashItemsBatch', items)
   }
