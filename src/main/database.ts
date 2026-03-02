@@ -60,10 +60,17 @@ function runMigrations(database: BetterSqlite3Database): void {
 
   if (currentVersion < SCHEMA_VERSION) {
     database.transaction(() => {
-      // v1: add stash tab metadata columns (safe to re-run via try/catch)
-      try { database.exec(`ALTER TABLE stash_items ADD COLUMN stash_tab_id TEXT`); } catch { /* already exists */ }
-      try { database.exec(`ALTER TABLE stash_items ADD COLUMN tab_name TEXT`); } catch { /* already exists */ }
-      try { database.exec(`ALTER TABLE stash_items ADD COLUMN tab_type TEXT`); } catch { /* already exists */ }
+      // v1: add stash tab metadata columns
+      for (const col of ['stash_tab_id TEXT', 'tab_name TEXT', 'tab_type TEXT']) {
+        try {
+          database.exec(`ALTER TABLE stash_items ADD COLUMN ${col}`);
+        } catch (err) {
+          if (err instanceof Error && !err.message.includes('duplicate column name')) {
+            console.error('[db] Unexpected migration error:', err);
+            throw err;
+          }
+        }
+      }
       database.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
     })();
   }
@@ -196,6 +203,7 @@ export function insertStashItem(data: NewStashItem): number {
 }
 
 export function insertStashItemsBatch(items: NewStashItem[]): void {
+  if (items.length === 0) return;
   const database = initDatabase();
   const insert = database.prepare(
     `INSERT INTO stash_items (item_id, league_id, snapshot_id, name, type_line, stack_size, note, stash_tab_id, tab_name, tab_type)
