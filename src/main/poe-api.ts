@@ -63,7 +63,13 @@ const API_BASE = 'https://api.pathofexile.com';
 const AUTHORIZE_URL = 'https://www.pathofexile.com/oauth/authorize';
 const TOKEN_URL = 'https://www.pathofexile.com/oauth/token';
 const REDIRECT_URI = process.env.POE_REDIRECT_URI ?? 'poestashtracker://oauth/callback';
-const CLIENT_ID = process.env.POE_CLIENT_ID ?? 'YOUR_POE_CLIENT_ID';
+const CLIENT_ID: string = (() => {
+  const value = process.env.POE_CLIENT_ID;
+  if (!value) {
+    throw new Error('POE_CLIENT_ID environment variable is required');
+  }
+  return value;
+})();
 const SCOPES = process.env.POE_SCOPES ?? 'account:stashes';
 
 export class PoeApiClient {
@@ -74,6 +80,15 @@ export class PoeApiClient {
     const stored = await this.loadToken();
     if (stored && stored.expiresAt > Date.now() + 10_000) {
       return { authenticated: true, expiresAt: stored.expiresAt };
+    }
+
+    if (stored?.refreshToken) {
+      try {
+        const refreshed = await this.refreshAccessToken(stored.refreshToken);
+        return { authenticated: true, expiresAt: refreshed.expiresAt };
+      } catch {
+        // Fallback to full OAuth if refresh fails.
+      }
     }
 
     const state = this.randomBase64Url(24);
