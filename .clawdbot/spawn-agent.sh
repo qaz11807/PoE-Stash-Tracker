@@ -66,7 +66,7 @@ gh pr create --title \"<適當的標題>\" --body \"${PR_BODY_ESCAPED}\"
 # 3. Build agent command
 case "${AGENT}" in
   codex)
-    AGENT_CMD="codex exec --dangerously-bypass-approvals-and-sandbox \"${FULL_PROMPT}\""
+    AGENT_CMD="codex exec --dangerously-bypass-approvals-and-sandbox < '${PROMPT_FILE}'"
     ;;
   claude)
     AGENT_CMD="claude --model ${MODEL} --dangerously-skip-permissions -p \"${FULL_PROMPT}\""
@@ -77,7 +77,11 @@ case "${AGENT}" in
     ;;
 esac
 
-# 4. Runner script written per-task
+# 4. Write prompt to file (avoids shell quoting issues)
+PROMPT_FILE="${CLAWDBOT_DIR}/prompt-${TASK_ID}.txt"
+printf '%s' "${FULL_PROMPT}" > "${PROMPT_FILE}"
+
+# 5. Runner script written per-task
 RUNNER="${CLAWDBOT_DIR}/run-${TASK_ID}.sh"
 cat > "${RUNNER}" <<RUNNER_EOF
 #!/usr/bin/env bash
@@ -88,7 +92,7 @@ echo "[agent] Done at \$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 RUNNER_EOF
 chmod +x "${RUNNER}"
 
-# 5. Start tmux session
+# 6. Start tmux session
 tmux new-session -d -s "${TMUX_SESSION}" -c "${WORKTREE_PATH}" "bash '${RUNNER}' 2>&1 | tee '${CLAWDBOT_DIR}/log-${TASK_ID}.txt'"
 
 echo "    tmux session '${TMUX_SESSION}' started."

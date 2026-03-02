@@ -1,6 +1,18 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { handlePoeOAuthCallback, registerPoeIpcHandlers } from './ipc-handlers/poe';
+import {
+  createTables,
+  getLeagues,
+  getSnapshots,
+  getSnapshotDetail,
+  getStashItems,
+  insertLeague,
+  insertSnapshot,
+  insertStashItem,
+  insertStashItemsBatch,
+  type NewStashItem
+} from './database';
 
 const isDev = !app.isPackaged;
 const CUSTOM_PROTOCOL = 'poestashtracker';
@@ -57,9 +69,7 @@ function isValidOAuthCallbackUrl(url: string): boolean {
 }
 
 async function tryHandleOAuthCallback(url: string | null): Promise<void> {
-  if (!url) {
-    return;
-  }
+  if (!url) return;
 
   if (!isValidOAuthCallbackUrl(url)) {
     console.warn('[main] Ignoring invalid OAuth callback URL', url);
@@ -74,6 +84,31 @@ async function tryHandleOAuthCallback(url: string | null): Promise<void> {
   }
 }
 
+function registerIpcHandlers(): void {
+  ipcMain.handle('app:get-version', () => app.getVersion());
+
+  ipcMain.handle('app:open-external-link', async (_event, url: string) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        return;
+      }
+      await shell.openExternal(url);
+    } catch {
+      return;
+    }
+  });
+
+  ipcMain.handle('db:getLeagues', () => getLeagues());
+  ipcMain.handle('db:insertLeague', (_event, name: string) => insertLeague(name));
+  ipcMain.handle('db:getSnapshots', (_event, leagueId: number) => getSnapshots(leagueId));
+  ipcMain.handle('db:getSnapshotDetail', (_event, id: number) => getSnapshotDetail(id));
+  ipcMain.handle('db:insertSnapshot', (_event, leagueId: number, rawJson: string) => insertSnapshot(leagueId, rawJson));
+  ipcMain.handle('db:getStashItems', (_event, snapshotId: number) => getStashItems(snapshotId));
+  ipcMain.handle('db:insertStashItem', (_event, data: NewStashItem) => insertStashItem(data));
+  ipcMain.handle('db:insertStashItemsBatch', (_event, items: NewStashItem[]) => insertStashItemsBatch(items));
+}
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -82,12 +117,9 @@ if (!gotLock) {
 
 app.on('second-instance', async (_event, argv) => {
   if (mainWindow) {
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore();
-    }
+    if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
   }
-
   try {
     await tryHandleOAuthCallback(extractDeepLink(argv));
   } catch (error) {
@@ -107,7 +139,9 @@ app.on('open-url', async (event, url) => {
 });
 
 app.whenReady().then(async () => {
+  createTables();
   registerCustomProtocolHandler();
+  registerIpcHandlers();
   registerPoeIpcHandlers();
   createWindow();
 
