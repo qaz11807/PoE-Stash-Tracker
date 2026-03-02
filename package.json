@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "concurrently -k \"vite\" \"tsc -p tsconfig.main.json --watch\" \"wait-on tcp:5173 dist/main/main.js && electron .\"",
     "build": "vite build && tsc -p tsconfig.main.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.main.json --noEmit",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
@@ -19,6 +20,7 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.13.10",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
