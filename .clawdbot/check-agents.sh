@@ -35,8 +35,8 @@ while IFS= read -r TASK; do
   WORKTREE=$(echo "${TASK}"  | jq -r '.worktree')
   DESC=$(echo "${TASK}"      | jq -r '.description')
 
-  if [[ "${STATUS}" == "failed" ]]; then
-    log "  [${ID}] Already failed, skipping."
+  if [[ "${STATUS}" == "failed" || "${STATUS}" == "merged" ]]; then
+    log "  [${ID}] Already ${STATUS}, skipping."
     UPDATED_TASKS=$(echo "${UPDATED_TASKS}" | jq --argjson t "${TASK}" '. + [$t]')
     continue
   fi
