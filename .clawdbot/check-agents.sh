@@ -59,48 +59,49 @@ while IFS= read -r TASK; do
   REVIEWED=$(echo "${TASK}" | jq -r '.reviewed // "false"')
   if [[ -n "${PR_NUM}" ]]; then
     log "    PR: #${PR_NUM} found (reviewed=${REVIEWED})"
-    # Auto-trigger code review if PR just appeared and not yet reviewed
-    if [[ "${REVIEWED}" == "false" ]]; then
-      log "    => Triggering auto code review for PR #${PR_NUM}..."
-      bash "${CLAWDBOT_DIR}/review-pr.sh" "${PR_NUM}" "${REPO_DIR}" >> "${CLAWDBOT_DIR}/monitor.log" 2>&1 &
-      TASK=$(echo "${TASK}" | jq '.reviewed = "true"')
-      # Notify Discord that review started
-      if [[ -n "${CLAWDBOT_DISCORD_CHANNEL:-}" ]]; then
-        openclaw message send \
-          --channel discord \
-          --target "channel:${CLAWDBOT_DISCORD_CHANNEL}" \
-          --message "🔍 **PR #${PR_NUM} 已建立！** 正在自動執行代碼審查，結果將 comment 至 PR。" 2>/dev/null || true
-      fi
-    fi
   else
     log "    PR: none yet"
   fi
 
-  # --- 3. Check CI ---
-  CI_STATUS=""
+  # --- 3. Check CI (optional) ---
+  CI_STATUS="none"
   if [[ -n "${PR_NUM}" ]]; then
-    CI_STATUS=$(gh pr checks "${PR_NUM}" --repo "${REPO_SLUG}" 2>/dev/null \
-      | awk '{print $2}' | sort | uniq \
-      | (grep -c "fail" || true) | xargs -I{} bash -c 'if [ {} -gt 0 ]; then echo fail; else echo pass; fi')
-    log "    CI: ${CI_STATUS:-unknown}"
+    set +e
+    FAIL_COUNT=$(gh pr checks "${PR_NUM}" --repo "${REPO_SLUG}" 2>/dev/null | awk '{print $2}' | grep -c "fail" || true)
+    FAIL_COUNT="${FAIL_COUNT:-0}"
+    set -e
+    if [[ "${FAIL_COUNT}" -gt 0 ]]; then
+      CI_STATUS="fail"
+    fi
+    log "    CI: ${CI_STATUS}"
   fi
 
   # --- 4. Determine new status ---
   NEW_STATUS="${STATUS}"
   NOTE=""
 
-  if [[ -n "${PR_NUM}" && "${CI_STATUS}" == "pass" ]]; then
+  if [[ -n "${PR_NUM}" && "${TMUX_ALIVE}" == "false" ]]; then
+    # PR exists and agent has finished → done (no CI required)
     NEW_STATUS="done"
-    NOTE="PR #${PR_NUM} created, CI passed. Ready to merge."
+    NOTE="PR #${PR_NUM} created. Ready to review and merge."
     log "    => DONE — ${NOTE}"
 
-    # Notify via Discord (channel set via CLAWDBOT_DISCORD_CHANNEL env var)
+    # Notify via Discord
     if [[ -n "${CLAWDBOT_DISCORD_CHANNEL:-}" ]]; then
+      PR_URL=$(gh pr view "${PR_NUM}" --repo "${REPO_SLUG}" --json url --jq '.url' 2>/dev/null || true)
       openclaw message send \
         --channel discord \
         --target "channel:${CLAWDBOT_DISCORD_CHANNEL}" \
-        --message "✅ **Task \`${ID}\` done!** PR #${PR_NUM} ready to merge.
+        --message "✅ **Task \`${ID}\` 完成！** PR #${PR_NUM} 等待 Review。
+${PR_URL}
 > ${DESC:0:100}" 2>/dev/null || true
+    fi
+
+    # Trigger code review if not yet done
+    if [[ "${REVIEWED}" == "false" ]]; then
+      log "    => Triggering auto code review for PR #${PR_NUM}..."
+      TASK=$(echo "${TASK}" | jq '.reviewed = "true"')
+      bash "${CLAWDBOT_DIR}/review-pr.sh" "${PR_NUM}" "${REPO_DIR}" >> "${CLAWDBOT_DIR}/monitor.log" 2>&1 &
     fi
 
   elif [[ "${TMUX_ALIVE}" == "false" && -z "${PR_NUM}" ]]; then
