@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "concurrently -k \"vite\" \"tsc -p tsconfig.main.json --watch\" \"wait-on tcp:5173 dist/main/main.js && electron .\"",
     "build": "vite build && tsc -p tsconfig.main.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
