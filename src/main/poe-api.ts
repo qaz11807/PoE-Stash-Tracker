@@ -63,18 +63,12 @@ const API_BASE = 'https://api.pathofexile.com';
 const AUTHORIZE_URL = 'https://www.pathofexile.com/oauth/authorize';
 const TOKEN_URL = 'https://www.pathofexile.com/oauth/token';
 const REDIRECT_URI = process.env.POE_REDIRECT_URI ?? 'poestashtracker://oauth/callback';
-const CLIENT_ID: string = (() => {
-  const value = process.env.POE_CLIENT_ID;
-  if (!value) {
-    throw new Error('POE_CLIENT_ID environment variable is required');
-  }
-  return value;
-})();
 const SCOPES = process.env.POE_SCOPES ?? 'account:stashes';
 
 export class PoeApiClient {
   private readonly tokenFilePath = path.join(app.getPath('userData'), 'poe-token.enc');
   private pendingAuth?: PendingAuth;
+  private pendingAuthRequest?: Promise<{ authenticated: boolean; expiresAt: number }>;
 
   async authenticate(): Promise<{ authenticated: boolean; expiresAt: number }> {
     const stored = await this.loadToken();
@@ -91,37 +85,19 @@ export class PoeApiClient {
       }
     }
 
-    const state = this.randomBase64Url(24);
-    const verifier = this.randomBase64Url(64);
-    const challenge = this.sha256Base64Url(verifier);
+    if (this.pendingAuthRequest) {
+      return this.pendingAuthRequest;
+    }
 
-    const authorizationUrl = new URL(AUTHORIZE_URL);
-    authorizationUrl.searchParams.set('response_type', 'code');
-    authorizationUrl.searchParams.set('client_id', CLIENT_ID);
-    authorizationUrl.searchParams.set('redirect_uri', REDIRECT_URI);
-    authorizationUrl.searchParams.set('scope', SCOPES);
-    authorizationUrl.searchParams.set('state', state);
-    authorizationUrl.searchParams.set('code_challenge_method', 'S256');
-    authorizationUrl.searchParams.set('code_challenge', challenge);
-
-    const token = await new Promise<StoredToken>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pendingAuth = undefined;
-        reject(new Error('OAuth authentication timed out.'));
-      }, 180_000);
-
-      this.pendingAuth = { state, verifier, resolve, reject, timeout };
-
-      shell
-        .openExternal(authorizationUrl.toString())
-        .catch((error) => {
-          clearTimeout(timeout);
-          this.pendingAuth = undefined;
-          reject(error instanceof Error ? error : new Error(String(error)));
-        });
-    });
-
-    return { authenticated: true, expiresAt: token.expiresAt };
+    const request = this.startAuthenticationFlow();
+    this.pendingAuthRequest = request;
+    try {
+      return await request;
+    } finally {
+      if (this.pendingAuthRequest === request) {
+        this.pendingAuthRequest = undefined;
+      }
+    }
   }
 
   async handleOAuthCallback(callbackUrl: string): Promise<boolean> {
@@ -167,6 +143,40 @@ export class PoeApiClient {
     }
 
     return true;
+  }
+
+  private async startAuthenticationFlow(): Promise<{ authenticated: boolean; expiresAt: number }> {
+    const state = this.randomBase64Url(24);
+    const verifier = this.randomBase64Url(64);
+    const challenge = this.sha256Base64Url(verifier);
+
+    const authorizationUrl = new URL(AUTHORIZE_URL);
+    authorizationUrl.searchParams.set('response_type', 'code');
+    authorizationUrl.searchParams.set('client_id', this.getClientId());
+    authorizationUrl.searchParams.set('redirect_uri', REDIRECT_URI);
+    authorizationUrl.searchParams.set('scope', SCOPES);
+    authorizationUrl.searchParams.set('state', state);
+    authorizationUrl.searchParams.set('code_challenge_method', 'S256');
+    authorizationUrl.searchParams.set('code_challenge', challenge);
+
+    const token = await new Promise<StoredToken>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingAuth = undefined;
+        reject(new Error('OAuth authentication timed out.'));
+      }, 180_000);
+
+      this.pendingAuth = { state, verifier, resolve, reject, timeout };
+
+      shell
+        .openExternal(authorizationUrl.toString())
+        .catch((error) => {
+          clearTimeout(timeout);
+          this.pendingAuth = undefined;
+          reject(error instanceof Error ? error : new Error(String(error)));
+        });
+    });
+
+    return { authenticated: true, expiresAt: token.expiresAt };
   }
 
   async getLeagues(): Promise<League[]> {
@@ -243,7 +253,7 @@ export class PoeApiClient {
   private async exchangeCodeForToken(code: string, verifier: string): Promise<StoredToken> {
     const payload = {
       grant_type: 'authorization_code',
-      client_id: CLIENT_ID,
+      client_id: this.getClientId(),
       code,
       redirect_uri: REDIRECT_URI,
       code_verifier: verifier
@@ -264,7 +274,7 @@ export class PoeApiClient {
   private async refreshAccessToken(refreshToken: string): Promise<StoredToken> {
     const payload = {
       grant_type: 'refresh_token',
-      client_id: CLIENT_ID,
+      client_id: this.getClientId(),
       refresh_token: refreshToken
     };
 
@@ -360,6 +370,14 @@ export class PoeApiClient {
 
   private randomBase64Url(size: number): string {
     return randomBytes(size).toString('base64url');
+  }
+
+  private getClientId(): string {
+    const value = process.env.POE_CLIENT_ID;
+    if (!value) {
+      throw new Error('POE_CLIENT_ID 尚未設定，請在設定頁輸入 Client ID');
+    }
+    return value;
   }
 
   private sha256Base64Url(value: string): string {

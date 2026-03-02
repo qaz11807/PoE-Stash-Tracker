@@ -32,12 +32,15 @@ function createWindow(): void {
 }
 
 function registerCustomProtocolHandler(): void {
+  let registered = false;
   if (process.defaultApp) {
-    app.setAsDefaultProtocolClient(CUSTOM_PROTOCOL, process.execPath, [path.resolve(process.argv[1] ?? '')]);
-    return;
+    registered = app.setAsDefaultProtocolClient(CUSTOM_PROTOCOL, process.execPath, [path.resolve(process.argv[1] ?? '')]);
+  } else {
+    registered = app.setAsDefaultProtocolClient(CUSTOM_PROTOCOL);
   }
-
-  app.setAsDefaultProtocolClient(CUSTOM_PROTOCOL);
+  if (!registered) {
+    console.warn('[main] Failed to register protocol handler');
+  }
 }
 
 function extractDeepLink(argv: string[]): string | null {
@@ -65,12 +68,22 @@ app.on('second-instance', async (_event, argv) => {
     mainWindow.focus();
   }
 
-  await tryHandleOAuthCallback(extractDeepLink(argv));
+  try {
+    await tryHandleOAuthCallback(extractDeepLink(argv));
+  } catch (error) {
+    console.error('[main] Failed to handle OAuth callback from second-instance', error);
+    mainWindow?.webContents.send('poe:oauth-callback-error', error instanceof Error ? error.message : String(error));
+  }
 });
 
 app.on('open-url', async (event, url) => {
   event.preventDefault();
-  await tryHandleOAuthCallback(url);
+  try {
+    await tryHandleOAuthCallback(url);
+  } catch (error) {
+    console.error('[main] Failed to handle OAuth callback from open-url', error);
+    mainWindow?.webContents.send('poe:oauth-callback-error', error instanceof Error ? error.message : String(error));
+  }
 });
 
 app.whenReady().then(async () => {
