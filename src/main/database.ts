@@ -2,6 +2,8 @@ import { app } from 'electron';
 import path from 'node:path';
 import BetterSqlite3, { Database as BetterSqlite3Database } from 'better-sqlite3';
 
+const SCHEMA_VERSION = 1;
+
 export type League = {
   id: number;
   name: string;
@@ -24,20 +26,42 @@ export type StashItem = {
   type_line: string | null;
   stack_size: number | null;
   note: string | null;
+  stash_tab_id: string | null;
+  tab_name: string | null;
+  tab_type: string | null;
   created_at: string;
 };
 
 export type NewStashItem = {
-  itemId: string;
-  leagueId: number | null;
-  snapshotId: number | null;
+  item_id: string;
+  league_id: number | null;
+  snapshot_id: number | null;
   name?: string | null;
-  typeLine?: string | null;
-  stackSize?: number | null;
+  type_line?: string | null;
+  stack_size?: number | null;
   note?: string | null;
+  stash_tab_id?: string | null;
+  tab_name?: string | null;
+  tab_type?: string | null;
 };
 
 let db: BetterSqlite3Database | null = null;
+
+function runMigrations(database: BetterSqlite3Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS schema_version (
+      version INTEGER NOT NULL,
+      applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  const row = database.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number | null };
+  const currentVersion = row?.v ?? 0;
+
+  if (currentVersion < 1) {
+    database.prepare('INSERT INTO schema_version (version) VALUES (?)').run(1);
+  }
+}
 
 export function initDatabase(): BetterSqlite3Database {
   if (db) {
@@ -79,6 +103,9 @@ export function createTables(): void {
       type_line TEXT,
       stack_size INTEGER,
       note TEXT,
+      stash_tab_id TEXT,
+      tab_name TEXT,
+      tab_type TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (league_id) REFERENCES leagues(id),
       FOREIGN KEY (snapshot_id) REFERENCES snapshots(id)
@@ -88,6 +115,8 @@ export function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_stash_items_league_id ON stash_items(league_id);
     CREATE INDEX IF NOT EXISTS idx_snapshots_league_id ON snapshots(league_id);
   `);
+
+  runMigrations(database);
 }
 
 export function getLeagues(): League[] {
@@ -121,7 +150,7 @@ export function insertSnapshot(leagueId: number, rawJson: string): number {
 export function getStashItems(snapshotId: number): StashItem[] {
   const database = initDatabase();
   const statement = database.prepare(
-    `SELECT id, item_id, league_id, snapshot_id, name, type_line, stack_size, note, created_at
+    `SELECT id, item_id, league_id, snapshot_id, name, type_line, stack_size, note, stash_tab_id, tab_name, tab_type, created_at
      FROM stash_items
      WHERE snapshot_id = ?
      ORDER BY created_at DESC, id DESC`
@@ -132,17 +161,45 @@ export function getStashItems(snapshotId: number): StashItem[] {
 export function insertStashItem(data: NewStashItem): number {
   const database = initDatabase();
   const statement = database.prepare(
-    `INSERT INTO stash_items (item_id, league_id, snapshot_id, name, type_line, stack_size, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO stash_items (item_id, league_id, snapshot_id, name, type_line, stack_size, note, stash_tab_id, tab_name, tab_type)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const result = statement.run(
-    data.itemId,
-    data.leagueId,
-    data.snapshotId,
+    data.item_id,
+    data.league_id,
+    data.snapshot_id,
     data.name ?? null,
-    data.typeLine ?? null,
-    data.stackSize ?? null,
-    data.note ?? null
+    data.type_line ?? null,
+    data.stack_size ?? null,
+    data.note ?? null,
+    data.stash_tab_id ?? null,
+    data.tab_name ?? null,
+    data.tab_type ?? null
   );
   return Number(result.lastInsertRowid);
+}
+
+export function insertStashItemsBatch(items: NewStashItem[]): void {
+  const database = initDatabase();
+  const insert = database.prepare(
+    `INSERT INTO stash_items (item_id, league_id, snapshot_id, name, type_line, stack_size, note, stash_tab_id, tab_name, tab_type)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const insertMany = database.transaction((rows: NewStashItem[]) => {
+    for (const row of rows) {
+      insert.run(
+        row.item_id,
+        row.league_id,
+        row.snapshot_id,
+        row.name ?? null,
+        row.type_line ?? null,
+        row.stack_size ?? null,
+        row.note ?? null,
+        row.stash_tab_id ?? null,
+        row.tab_name ?? null,
+        row.tab_type ?? null
+      );
+    }
+  });
+  insertMany(items);
 }

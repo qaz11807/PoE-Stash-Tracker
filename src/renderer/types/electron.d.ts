@@ -22,17 +22,23 @@ type StashItem = {
   type_line: string | null;
   stack_size: number | null;
   note: string | null;
+  stash_tab_id: string | null;
+  tab_name: string | null;
+  tab_type: string | null;
   created_at: string;
 };
 
 type NewStashItem = {
-  itemId: string;
-  leagueId: number | null;
-  snapshotId: number | null;
+  item_id: string;
+  league_id: number | null;
+  snapshot_id: number | null;
   name?: string | null;
-  typeLine?: string | null;
-  stackSize?: number | null;
+  type_line?: string | null;
+  stack_size?: number | null;
   note?: string | null;
+  stash_tab_id?: string | null;
+  tab_name?: string | null;
+  tab_type?: string | null;
 };
 
 declare global {
@@ -47,6 +53,7 @@ declare global {
         insertSnapshot: (leagueId: number, rawJson: string) => Promise<number>;
         getStashItems: (snapshotId: number) => Promise<StashItem[]>;
         insertStashItem: (data: NewStashItem) => Promise<number>;
+        insertStashItemsBatch: (items: NewStashItem[]) => Promise<void>;
       };
     };
   }

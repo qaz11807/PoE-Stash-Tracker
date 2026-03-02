@@ -8,6 +8,7 @@ import {
   insertLeague,
   insertSnapshot,
   insertStashItem,
+  insertStashItemsBatch,
   type NewStashItem
 } from './database';
 
@@ -71,6 +72,10 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('db:insertStashItem', (_event, data: NewStashItem) => {
     return insertStashItem(data);
+  });
+
+  ipcMain.handle('db:insertStashItemsBatch', (_event, items: NewStashItem[]) => {
+    return insertStashItemsBatch(items);
   });
 }
 
