@@ -64,6 +64,23 @@ const AUTHORIZE_URL = 'https://www.pathofexile.com/oauth/authorize';
 const TOKEN_URL = 'https://www.pathofexile.com/oauth/token';
 const REDIRECT_URI = process.env.POE_REDIRECT_URI ?? 'poestashtracker://oauth/callback';
 const SCOPES = process.env.POE_SCOPES ?? 'account:stashes';
+const MAX_RETRIES = 3;
+
+async function fetchWithRateLimit(url: string, options: RequestInit): Promise<Response> {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
+    const response = await fetch(url, options);
+    if (response.status !== 429) {
+      return response;
+    }
+
+    const retryAfter = parseInt(response.headers.get('Retry-After') ?? '60', 10);
+    const waitMs = Math.min(retryAfter * 1000, 120_000);
+    console.warn(`[poe-api] Rate limited. Retrying after ${retryAfter}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+
+  throw new Error('PoE API rate limit exceeded after maximum retries');
+}
 
 export class PoeApiClient {
   private readonly tokenFilePath = path.join(app.getPath('userData'), 'poe-token.enc');
@@ -180,11 +197,9 @@ export class PoeApiClient {
   }
 
   async getLeagues(): Promise<League[]> {
-    const token = await this.getValidAccessToken();
     const url = new URL('/data/leagues', API_BASE);
-    const response = await this.fetchWithRetry(url.toString(), {
+    const response = await this.fetchWithAuthRefresh(url.toString(), {
       headers: {
-        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       }
     });
@@ -205,13 +220,11 @@ export class PoeApiClient {
   }
 
   async getStashTabs(leagueId: string): Promise<StashTab[]> {
-    const token = await this.getValidAccessToken();
     const url = new URL(`/stash/${encodeURIComponent(leagueId)}`, API_BASE);
     url.searchParams.set('tabs', '1');
 
-    const response = await this.fetchWithRetry(url.toString(), {
+    const response = await this.fetchWithAuthRefresh(url.toString(), {
       headers: {
-        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       }
     });
@@ -234,13 +247,11 @@ export class PoeApiClient {
   }
 
   async getStashTabContent(leagueId: string, stashId: string): Promise<StashItem[]> {
-    const token = await this.getValidAccessToken();
     const url = new URL(`/stash/${encodeURIComponent(leagueId)}`, API_BASE);
     url.searchParams.set('tabs', stashId);
 
-    const response = await this.fetchWithRetry(url.toString(), {
+    const response = await this.fetchWithAuthRefresh(url.toString(), {
       headers: {
-        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       }
     });
@@ -259,13 +270,14 @@ export class PoeApiClient {
       code_verifier: verifier
     };
 
-    const response = await this.fetchWithRetry(TOKEN_URL, {
+    const response = await fetchWithRateLimit(TOKEN_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
     });
+    this.ensureOk(response);
 
     const body = (await response.json()) as TokenPayload;
     return this.toStoredToken(body);
@@ -278,13 +290,14 @@ export class PoeApiClient {
       refresh_token: refreshToken
     };
 
-    const response = await this.fetchWithRetry(TOKEN_URL, {
+    const response = await fetchWithRateLimit(TOKEN_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
     });
+    this.ensureOk(response);
 
     const body = (await response.json()) as TokenPayload;
     const token = this.toStoredToken(body);
@@ -320,27 +333,49 @@ export class PoeApiClient {
     return refreshed.accessToken;
   }
 
-  private async fetchWithRetry(url: string, init: RequestInit, maxRetries = 5): Promise<Response> {
-    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-      const response = await fetch(url, init);
+  private async fetchWithAuthRefresh(url: string, init: RequestInit): Promise<Response> {
+    const token = await this.getValidAccessToken();
+    const firstResponse = await fetchWithRateLimit(url, this.withBearerToken(init, token));
 
-      if (response.status === 429 && attempt < maxRetries) {
-        const retryAfter = response.headers.get('retry-after');
-        const retryAfterMs = retryAfter ? Number(retryAfter) * 1000 : 0;
-        const backoffMs = Math.max(retryAfterMs, 400 * (2 ** attempt));
-        await this.sleep(backoffMs);
-        continue;
-      }
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(`PoE API request failed (${response.status}): ${text || response.statusText}`);
-      }
-
-      return response;
+    if (firstResponse.status !== 401) {
+      this.ensureOk(firstResponse);
+      return firstResponse;
     }
 
-    throw new Error('PoE API rate limit retries exhausted.');
+    const stored = await this.loadToken();
+    if (!stored?.refreshToken) {
+      throw new Error('Authentication expired, please re-authenticate');
+    }
+
+    let refreshed: StoredToken;
+    try {
+      refreshed = await this.refreshAccessToken(stored.refreshToken);
+    } catch {
+      throw new Error('Authentication expired, please re-authenticate');
+    }
+
+    const retryResponse = await fetchWithRateLimit(url, this.withBearerToken(init, refreshed.accessToken));
+    if (retryResponse.status === 401) {
+      throw new Error('Authentication expired, please re-authenticate');
+    }
+
+    this.ensureOk(retryResponse);
+    return retryResponse;
+  }
+
+  private withBearerToken(init: RequestInit, token: string): RequestInit {
+    const headers = new Headers(init.headers);
+    headers.set('Authorization', `Bearer ${token}`);
+    return {
+      ...init,
+      headers
+    };
+  }
+
+  private ensureOk(response: Response): void {
+    if (!response.ok) {
+      throw new Error(`PoE API request failed (${response.status})`);
+    }
   }
 
   private async saveToken(token: StoredToken): Promise<void> {
@@ -384,7 +419,4 @@ export class PoeApiClient {
     return createHash('sha256').update(value).digest('base64url');
   }
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
 }
