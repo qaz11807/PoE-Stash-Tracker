@@ -47,17 +47,37 @@ function extractDeepLink(argv: string[]): string | null {
   return argv.find((arg) => arg.startsWith(`${CUSTOM_PROTOCOL}://`)) ?? null;
 }
 
+function isValidOAuthCallbackUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'poestashtracker:' && parsed.hostname === 'oauth' && parsed.pathname.startsWith('/callback');
+  } catch {
+    return false;
+  }
+}
+
 async function tryHandleOAuthCallback(url: string | null): Promise<void> {
   if (!url) {
     return;
   }
 
-  await handlePoeOAuthCallback(url);
+  if (!isValidOAuthCallbackUrl(url)) {
+    console.warn('[main] Ignoring invalid OAuth callback URL', url);
+    mainWindow?.webContents.send('poe:oauth-callback-error', 'Invalid OAuth callback URL');
+    return;
+  }
+
+  const success = await handlePoeOAuthCallback(url);
+  if (!success) {
+    console.warn('[main] OAuth callback was not handled (state mismatch or no pending auth)');
+    mainWindow?.webContents.send('poe:oauth-callback-error', 'OAuth callback not handled');
+  }
 }
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
+  process.exit(0);
 }
 
 app.on('second-instance', async (_event, argv) => {
