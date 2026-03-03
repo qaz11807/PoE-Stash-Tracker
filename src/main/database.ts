@@ -233,21 +233,28 @@ export function saveStashSnapshot(leagueId: number, rawJson: string, items: NewS
   let snapshotId: number = 0;
   let itemCount = 0;
 
-  const transaction = database.transaction(() => {
-    snapshotId = insertSnapshot(leagueId, rawJson);
+  try {
+    database.transaction(() => {
+      snapshotId = insertSnapshot(leagueId, rawJson);
 
-    if (items.length > 0) {
-      const updated = items.map(item => ({
-        ...item,
-        snapshot_id: snapshotId,
-        league_id: leagueId
-      }));
-      insertStashItemsBatch(updated);
-      itemCount = updated.length;
-    }
-  });
+      if (items.length > 0) {
+        const updated = items.map(item => ({
+          ...item,
+          snapshot_id: snapshotId,
+          league_id: leagueId
+        }));
+        insertStashItemsBatch(updated);
+        itemCount = updated.length;
+      }
+    })();
+  } catch (err) {
+    console.error('[db] saveStashSnapshot failed:', err);
+    throw new Error(`儲存快照失敗：${err instanceof Error ? err.message : String(err)}`);
+  }
 
-  transaction();
+  if (snapshotId === 0) {
+    throw new Error('快照建立失敗：snapshotId 未設定');
+  }
 
   return { snapshotId, itemCount };
 }
