@@ -50,8 +50,10 @@ declare global {
         getLeagues: () => Promise<League[]>;
         insertLeague: (name: string) => Promise<number>;
         getSnapshots: (leagueId: number) => Promise<Snapshot[]>;
+        getSnapshotsWithItemCounts: (leagueId: number) => Promise<Array<Snapshot & { itemCount: number }>>;
         insertSnapshot: (leagueId: number, rawJson: string) => Promise<number>;
         getStashItems: (snapshotId: number) => Promise<StashItem[]>;
+        getSnapshotItemCount: (snapshotId: number) => Promise<number>;
         insertStashItem: (data: NewStashItem) => Promise<number>;
         insertStashItemsBatch: (items: NewStashItem[]) => Promise<void>;
       };
