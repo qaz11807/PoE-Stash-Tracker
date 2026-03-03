@@ -64,14 +64,8 @@ export function useDashboardData(leagueId: number | null) {
       setError(null);
 
       try {
-        // Load snapshots for the league
-        const snapshotList = await window.electronAPI.db.getSnapshots(leagueId);
-
-        // Fetch item counts for each snapshot
-        const counts = await Promise.all(
-          snapshotList.map((s: any) => window.electronAPI.db.getSnapshotItemCount(s.id))
-        );
-        const snapshotsWithCounts = snapshotList.map((s: any, i: number) => ({ ...s, itemCount: counts[i] }));
+        // Load snapshots with item counts in a single JOIN query (no N+1)
+        const snapshotsWithCounts = await window.electronAPI.db.getSnapshotsWithItemCounts(leagueId);
         setSnapshots(snapshotsWithCounts);
 
         // Get the latest snapshot

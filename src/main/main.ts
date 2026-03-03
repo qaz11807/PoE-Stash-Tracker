@@ -5,6 +5,7 @@ import {
   createTables,
   getLeagues,
   getSnapshots,
+  getSnapshotsWithItemCounts,
   getSnapshotDetail,
   getStashItems,
   getSnapshotItemCount,
@@ -103,6 +104,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('db:getLeagues', () => getLeagues());
   ipcMain.handle('db:insertLeague', (_event, name: string) => insertLeague(name));
   ipcMain.handle('db:getSnapshots', (_event, leagueId: number) => getSnapshots(leagueId));
+  ipcMain.handle('db:getSnapshotsWithItemCounts', (_event, leagueId: number) => getSnapshotsWithItemCounts(leagueId));
   ipcMain.handle('db:getSnapshotDetail', (_event, id: number) => getSnapshotDetail(id));
   ipcMain.handle('db:insertSnapshot', (_event, leagueId: number, rawJson: string) => insertSnapshot(leagueId, rawJson));
   ipcMain.handle('db:getStashItems', (_event, snapshotId: number) => getStashItems(snapshotId));

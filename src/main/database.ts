@@ -155,6 +155,21 @@ export function getSnapshots(leagueId: number): Omit<Snapshot, 'raw_json'>[] {
   return statement.all(leagueId) as Omit<Snapshot, 'raw_json'>[];
 }
 
+export type SnapshotWithCount = Omit<Snapshot, 'raw_json'> & { itemCount: number };
+
+export function getSnapshotsWithItemCounts(leagueId: number): SnapshotWithCount[] {
+  const database = initDatabase();
+  const statement = database.prepare(`
+    SELECT s.id, s.league_id, s.captured_at, COUNT(si.id) as itemCount
+    FROM snapshots s
+    LEFT JOIN stash_items si ON si.snapshot_id = s.id
+    WHERE s.league_id = ?
+    GROUP BY s.id
+    ORDER BY s.captured_at DESC, s.id DESC
+  `);
+  return statement.all(leagueId) as SnapshotWithCount[];
+}
+
 export function getSnapshotDetail(id: number): Snapshot | null {
   const database = initDatabase();
   const statement = database.prepare(
